@@ -32,7 +32,7 @@ func main() {
 Create a new API endpoint using the `NewRouter` function:
 
 ```go
-product := worx.NewRouter[Product, ProductResponse]("/products", Product{}, ProductResponse{})
+product := worx.NewRouter[Product, ProductResponse]("/products")
 ```
 
 ### 4. Include Routes in Your Application:
