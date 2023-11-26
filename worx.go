@@ -13,8 +13,8 @@ type Application struct {
 	engine *gin.Engine
 }
 
-func NewRouter[In, Out any](path string, in In, out Out) *router.APIEndpoint[In, Out] {
-	return router.New[In, Out](path, in, out)
+func NewRouter[In, Out any](path string) *router.APIEndpoint[In, Out] {
+	return router.New[In, Out](path)
 }
 
 func NewApplication(path, name string) *Application {

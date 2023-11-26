@@ -17,7 +17,7 @@ type ProductResponse struct {
 
 func main() {
 	app := worx.NewApplication("/api", "Product Catalog API")
-	product := worx.NewRouter[Product, ProductResponse]("/products", Product{}, ProductResponse{})
+	product := worx.NewRouter[Product, ProductResponse]("/products")
 	worx.IncludeRoute(app, product)
 	product.HandleCreate("", func(product Product, params *router.RequestParams) (*router.ProcessorError, *ProductResponse) {
 		return nil, &ProductResponse{
