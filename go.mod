@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/gin-contrib/cors v1.5.0
 	github.com/gin-gonic/gin v1.9.1
-	github.com/grahms/godantic v1.0.7
+	github.com/grahms/godantic v1.0.11
 	github.com/stretchr/testify v1.8.4
 )
 

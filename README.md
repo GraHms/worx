@@ -32,18 +32,12 @@ func main() {
 Create a new API endpoint using the `NewRouter` function:
 
 ```go
-product := worx.NewRouter[Product, ProductResponse]("/products")
+product := worx.NewRouter[Product, ProductResponse](app, "/products")
 ```
 
-### 4. Include Routes in Your Application:
 
-Include the defined route in your Worx application **before defining handlers**:
 
-```go
-worx.IncludeRoute(app, product)
-```
-
-### 5. Handle Requests:
+### 4. Handle Requests:
 
 Define your request handling logic using the `HandleCreate`, `HandleRead`, `HandleUpdate`, and `HandleList` methods:
 
@@ -57,7 +51,7 @@ product.HandleCreate("", func(product Product, params *router.RequestParams) (*r
 })
 ```
 
-### 6. Run Your Application:
+### 5. Run Your Application:
 
 Start your Worx application and listen on a specified port:
 

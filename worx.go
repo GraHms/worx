@@ -16,11 +16,11 @@ type Application struct {
 	engine *gin.Engine
 }
 
-func NewRouter[In, Out any](path string) *router.APIEndpoint[In, Out] {
-	return router.New[In, Out](path)
+func NewRouter[In, Out any](app *Application, path string) *router.APIEndpoint[In, Out] {
+	return router.New[In, Out](path, app.router.Group(""))
 }
 
-func NewApplication(path, name string) *Application {
+func NewApplication(path, name string, middlewares ...gin.HandlerFunc) *Application {
 	r := Engine()
 
 	config := cors.DefaultConfig()
@@ -28,6 +28,10 @@ func NewApplication(path, name string) *Application {
 
 	config.ExposeHeaders = []string{"Content-Length", "X-Result-Count", "X-Total-Count", "Content-Type"}
 	r.Use(cors.New(config))
+	// Optionally apply custom middleware
+	for _, mw := range middlewares {
+		r.Use(mw)
+	}
 	r.HandleMethodNotAllowed = true
 	noMethod(r)
 	noRoute(r)
@@ -41,10 +45,6 @@ func NewApplication(path, name string) *Application {
 }
 
 type _ any
-
-func IncludeRoute[In, Out any](a *Application, apiEndpoint *router.APIEndpoint[In, Out]) {
-	apiEndpoint.Router = a.router.Group("")
-}
 
 func (a *Application) Run(address string) error {
 	return a.engine.Run(address)

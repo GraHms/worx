@@ -18,9 +18,10 @@ type APIEndpointer[Req, Resp any] interface {
 	HandleList(pathString string, requestProcessor func(params *RequestParams, limit int, offset int) ([]*Resp, *ProcessorError, int, int))
 }
 
-func New[In, Out any](path string) *APIEndpoint[In, Out] {
+func New[In, Out any](path string, group *gin.RouterGroup) *APIEndpoint[In, Out] {
 	return &APIEndpoint[In, Out]{
-		Path: path,
+		Path:   path,
+		Router: group,
 	}
 }
 
