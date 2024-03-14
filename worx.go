@@ -1,11 +1,14 @@
 package worx
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/grahms/worx/router"
+	"html/template"
+	"net/http"
 	"time"
 )
 
@@ -47,6 +50,14 @@ func NewApplication(path, name string, middlewares ...gin.HandlerFunc) *Applicat
 type _ any
 
 func (a *Application) Run(address string) error {
+
+	// Generate Swagger JSON
+	swaggerJSON := buildSwaggerJSON(a.name)
+	bJ, _ := json.Marshal(swaggerJSON)
+
+	// Serve Swagger UI
+	a.router.GET("/spec", RenderSwagg(string(bJ))) // Serve swagger ui
+
 	return a.engine.Run(address)
 }
 func noRoute(r *gin.Engine) {
@@ -160,4 +171,27 @@ var defaultLogFormatter = func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("[WORX] Error formatting log as JSON: %v\n", err)
 	}
 	return string(logJSON) + "\n"
+}
+
+func RenderSwagg(spec string) func(c *gin.Context) {
+	return func(c *gin.Context) {
+
+		tmplData := struct {
+			SwaggerJSON string
+		}{
+			SwaggerJSON: spec,
+		}
+
+		t := template.Must(template.New("swagger").Parse(swagTempl))
+
+		var buf bytes.Buffer
+		if err := t.Execute(&buf, tmplData); err != nil {
+			c.String(http.StatusInternalServerError, "Failed to render Swagger UI")
+			return
+		}
+
+		c.Header("Content-Type", "text/html")
+		c.String(http.StatusOK, buf.String())
+	}
+
 }

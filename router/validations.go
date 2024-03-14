@@ -20,7 +20,7 @@ func (va *Validation) contentType() (int, Error) {
 
 }
 
-func (va *Validation) ProcessorErr(perr *ProcessorError) (int, Error) {
+func (va *Validation) ProcessorErr(perr *Err) (int, Error) {
 	exp := Error{
 		Code:    perr.ErrCode,
 		Reason:  perr.ErrReason,

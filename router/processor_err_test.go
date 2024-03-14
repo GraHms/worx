@@ -6,7 +6,7 @@ import (
 )
 
 func TestProcessorError_Error(t *testing.T) {
-	err := &ProcessorError{
+	err := &Err{
 		StatusCode: 500,
 		ErrCode:    "INTERNAL_ERROR",
 		ErrReason:  "An internal error occurred while processing the request",

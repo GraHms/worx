@@ -53,8 +53,8 @@ func TestInput(t *testing.T) {
 func TestProcessorErr(t *testing.T) {
 	validation := Validation{}
 
-	// Test with a ProcessorError struct
-	perr := ProcessorError{
+	// Test with a Err struct
+	perr := Err{
 		ErrCode:    "123",
 		ErrReason:  "Test Error",
 		Message:    "This is a test error message",
