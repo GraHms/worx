@@ -1,74 +1,182 @@
 package worx
 
 import (
+	"errors"
 	"fmt"
 	"github.com/grahms/worx/router"
 	"reflect"
+	"regexp"
 	"strings"
 )
 
-func buildSwaggerJSON(name string) map[string]interface{} {
-	swagger := make(map[string]interface{})
+type Map map[string]interface{}
+type OpenAPI struct {
+	swagger     Map
+	title       string
+	version     string
+	description string
+	paths       Map
+	endpoints   map[string]*router.Endpoint
+}
+
+func New(title, version, description string) *OpenAPI {
+	swagger := make(Map)
 	swagger["openapi"] = "3.0.0"
-	swagger["info"] = map[string]interface{}{
-		"title":       name,
-		"description": "Description of your API",
-		"version":     "1.0.0",
+	swagger["info"] = Map{
+		"title":       title,
+		"version":     version,
+		"description": description,
+	}
+	return &OpenAPI{
+		swagger:     swagger,
+		title:       title,
+		version:     version,
+		description: description,
+		paths:       make(Map),
+	}
+}
+
+func (o *OpenAPI) SetEndpoints(endpoints map[string]*router.Endpoint) *OpenAPI {
+	o.endpoints = endpoints
+	return o
+}
+
+func (o *OpenAPI) Build() (Map, error) {
+	if len(o.endpoints) == 0 {
+		return nil, errors.New("no endpoints provided")
 	}
 
-	paths := make(map[string]interface{})
-	for _, endpoint := range router.Endpoints {
-		pathItem := make(map[string]interface{})
-		for _, method := range endpoint.Methods {
-			operation := make(map[string]interface{})
-			operation["responses"] = map[string]interface{}{
-				"200": map[string]interface{}{
-					"description": "Successful operation",
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
-							"schema": map[string]interface{}{
-								"type": "object",
-							},
-						},
-					},
-				},
-			}
+	for _, endpoint := range o.endpoints {
+		o.paths[endpoint.Path] = o.buildPathItem(endpoint)
+	}
+	o.swagger["paths"] = o.paths
+	return o.swagger, nil
+}
 
-			// Add request schema only if the method is not "GET"
-			if method.HTTPMethod != "GET" && method.Request != nil {
-				requestSchema := buildSchemaFromStruct(method.Request, "request")
-				operation["requestBody"] = map[string]interface{}{
-					"required": true,
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
-							"schema": requestSchema,
-						},
-					},
-				}
-			}
+func (o *OpenAPI) buildPathItem(endpoint *router.Endpoint) Map {
+	pathItem := make(Map)
+	path := endpoint.Path
+	// Find all dynamic segments in the path and replace them with {param}/
+	re := regexp.MustCompile(`/:(\w+)(/|$)`)
+	path = re.ReplaceAllString(path, "/{$1}/")
 
-			if method.Response != nil {
-				responseSchema := buildSchemaFromStruct(method.Response, "response")
-				operation["responses"].(map[string]interface{})["200"].(map[string]interface{})["content"].(map[string]interface{})["application/json"].(map[string]interface{})["schema"] = responseSchema
-			}
-
-			// Add description if available
-			if method.Description != "" {
-				operation["description"] = method.Description
-			}
-
-			pathItem[strings.ToLower(method.HTTPMethod)] = operation
+	// Build path parameters for each dynamic segment
+	re = regexp.MustCompile(`{(\w+)}/`)
+	matches := re.FindAllStringSubmatch(path, -1)
+	for _, match := range matches {
+		paramName := match[1]
+		if pathItem["parameters"] == nil {
+			pathItem["parameters"] = []Map{}
 		}
-		paths[endpoint.Path] = pathItem
+		// Add path parameter to the path parameters map
+		pathItemParams := make(Map)
+		pathItemParams["name"] = paramName
+		pathItemParams["in"] = "path"
+		pathItemParams["required"] = true
+		pathItemParams["schema"] = Map{"type": "string"}
+		pathItemParams["description"] = fmt.Sprintf("Path parameter %s", paramName)
+		pathItem["parameters"] = append(pathItem["parameters"].([]Map), pathItemParams)
 	}
 
-	swagger["paths"] = paths
-	return swagger
+	for _, method := range endpoint.Methods {
+		pathItem[strings.ToLower(method.HTTPMethod)] = o.buildOperation(method)
+	}
+
+	o.paths[path] = pathItem
+	return pathItem
 }
 
-func getValueOf(val interface{}) reflect.Value {
-	return reflect.ValueOf(val)
+func (o *OpenAPI) buildOperation(method router.Method) Map {
+	operation := Map{
+		"responses": Map{
+			"200": o.buildResponse(),
+		},
+	}
+
+	if method.HTTPMethod != "GET" && method.Request != nil {
+		operation["requestBody"] = o.buildRequestBody(method.Request)
+	}
+
+	if method.Response != nil {
+		schema := Schema{}
+		operation["responses"].(Map)["200"].(Map)["content"].(Map)["application/json"].(Map)["schema"] = schema.Build(method.Response, "response")
+	}
+	operation["tags"] = method.Configs.Tags
+	operation["description"] = method.Description
+	operation["summary"] = method.Configs.Name
+
+	parameters := o.buildParameters(method.Configs.AllowedHeaders, method.Configs.AllowedParams)
+	if len(parameters) > 0 {
+		operation["parameters"] = parameters
+	}
+
+	return operation
 }
+
+func (o *OpenAPI) buildResponse() Map {
+	return Map{
+		"description": "Successful operation",
+		"content": Map{
+			"application/json": Map{
+				"schema": Map{
+					"type": "object",
+				},
+			},
+		},
+	}
+}
+
+func (o *OpenAPI) buildRequestBody(request interface{}) Map {
+	s := Schema{}
+	requestSchema := s.Build(request, "request")
+	return Map{
+		"required": true,
+		"content": Map{
+			"application/json": Map{
+				"schema": requestSchema,
+			},
+		},
+	}
+}
+
+func (o *OpenAPI) buildParameters(headers []router.AllowedFields, queryParams []router.AllowedFields) []Map {
+	parameters := make([]Map, 0)
+
+	for _, header := range headers {
+		parameters = append(parameters, o.buildHeaderParameter(header))
+	}
+
+	for _, param := range queryParams {
+		parameters = append(parameters, o.buildQueryParamParameter(param))
+	}
+
+	return parameters
+}
+
+func (o *OpenAPI) buildHeaderParameter(header router.AllowedFields) Map {
+	return Map{
+		"in":          "header",
+		"name":        header.Name,
+		"description": header.Description,
+		"required":    header.Required,
+		"schema": Map{
+			"type": "string",
+		},
+	}
+}
+
+func (o *OpenAPI) buildQueryParamParameter(param router.AllowedFields) Map {
+	return Map{
+		"in":          "query",
+		"name":        param.Name,
+		"description": param.Description,
+		"required":    param.Required,
+		"schema": Map{
+			"type": "string",
+		},
+	}
+}
+
 func isPtr(value reflect.Value) bool {
 	return value.Kind() == reflect.Ptr
 }
@@ -77,20 +185,7 @@ func isList(value reflect.Type) bool {
 	return value.Kind() == reflect.Slice || value.Kind() == reflect.Array
 }
 
-func getStructTypeFromList(listType reflect.Type) reflect.Type {
-
-	if listType.Kind() == reflect.Slice || listType.Kind() == reflect.Array {
-		// Get the element type of the slice/array
-		elementType := listType.Elem()
-		// If the element type is a struct, return it
-		if elementType.Kind() == reflect.Struct {
-			return elementType
-		}
-	}
-	return nil
-}
-
-func buildSchemaFromStructByType(structType reflect.Type, schemaType string) map[string]interface{} {
+func (sc *Schema) buildSchemaFromStructByType(structType reflect.Type, schemaType string) map[string]interface{} {
 	schema := make(map[string]interface{})
 
 	switch schemaType {
@@ -113,7 +208,7 @@ func buildSchemaFromStructByType(structType reflect.Type, schemaType string) map
 			}
 
 			// Determine the schema for the field
-			fieldSchema := buildFieldFromSchema(field)
+			fieldSchema := sc.buildFieldFromSchema(field, schemaType)
 
 			// Add the field schema to the properties map
 			properties[fieldName] = fieldSchema
@@ -127,7 +222,7 @@ func buildSchemaFromStructByType(structType reflect.Type, schemaType string) map
 
 	case "array":
 		schema["type"] = "array"
-		schema["items"] = buildSchemaFromStructByType(structType, "object")
+		schema["items"] = sc.buildSchemaFromStructByType(structType, "object")
 
 	default:
 		// Unsupported schema type
@@ -137,61 +232,35 @@ func buildSchemaFromStructByType(structType reflect.Type, schemaType string) map
 	return schema
 }
 
-func buildSchemaFromStruct(s interface{}, structType string) map[string]interface{} {
-	// Dereference pointer if s is a pointer'
-	if reflect.TypeOf(s).Kind() == reflect.Ptr {
-		s = reflect.ValueOf(s).Elem().Interface()
+type Schema struct{}
+
+func (sc *Schema) Build(input interface{}, structType string) map[string]interface{} {
+
+	if reflect.TypeOf(input).Kind() == reflect.Ptr {
+		input = reflect.ValueOf(input).Elem().Interface()
 	}
-	t := reflect.TypeOf(s)
-	if structType := getStructTypeFromList(t); structType != nil {
-		fmt.Printf("%v", structType)
-		// If s is a slice or an array of structs, use the struct type to build the schema
-		return buildSchemaFromStructByType(structType, "array")
+	t := reflect.TypeOf(input)
+	if stype := sc.getStructTypeFromList(t); stype != nil {
+		return sc.buildSchemaFromStructByType(stype, "array")
 	}
 
 	schema := make(map[string]interface{})
 	schema["type"] = "object"
 
 	properties := make(map[string]interface{})
-	required := make([]string, 0) // Slice to store required field names
-
-	// Helper function to recursively build schema for nested structs
-	buildNestedSchema := func(fieldValue reflect.Value) map[string]interface{} {
-
-		if isPtr(fieldValue) {
-			// If it's a pointer, get the value it points to
-			fieldValue = fieldValue.Elem()
-		}
-		ftype := fieldValue.Type()
-		if isList(ftype) {
-
-			// If it's a list, build schema for its elements
-			listSchema := map[string]interface{}{
-				"type":  "array",
-				"items": buildSchemaFromStruct(fieldValue.Type(), structType),
-			}
-			return listSchema
-		} else if fieldValue.Kind() == reflect.Struct {
-			// If it's a struct, recursively build schema
-			return buildSchemaFromStruct(fieldValue.Interface(), structType)
-		}
-		// Otherwise, return an empty schema
-		return map[string]interface{}{}
-	}
+	required := make([]string, 0)
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		fieldName := field.Name
-		field.Tag.Get("binding")
-		// Check if the field is required
-		if len(field.Tag.Get("json")) > 0 {
-			fieldName = field.Tag.Get("json")
+		fieldName := sc.getFieldName(field)
+		if len(fieldName) == 0 {
+			continue
 		}
+		fieldName = field.Tag.Get("json")
+		required = sc.checkRequired(field, required)
 		if len(field.Tag.Get("binding")) > 0 {
 			binding := field.Tag.Get("binding")
 			switch binding {
-			case "required":
-				required = append(required, fieldName)
 			case "ignore":
 				if structType == "request" {
 					continue
@@ -201,12 +270,11 @@ func buildSchemaFromStruct(s interface{}, structType string) map[string]interfac
 		}
 
 		// Check if the field is a list or a nested struct
-		fieldValue := reflect.ValueOf(s).Field(i)
+		fieldValue := reflect.ValueOf(input).Field(i)
 		if isList(fieldValue.Type()) || fieldValue.Kind() == reflect.Struct {
-			properties[fieldName] = buildNestedSchema(fieldValue)
+			properties[fieldName] = sc.buildNestedSchema(fieldValue, structType)
 		} else {
-			// Otherwise, build schema for the field as before
-			properties[fieldName] = buildFieldFromSchema(field)
+			properties[fieldName] = sc.buildFieldFromSchema(field, structType)
 		}
 	}
 
@@ -218,9 +286,88 @@ func buildSchemaFromStruct(s interface{}, structType string) map[string]interfac
 	}
 
 	return schema
+
+}
+func (sc *Schema) buildNestedSchema(fieldValue reflect.Value, structType string) map[string]interface{} {
+	if isPtr(fieldValue) {
+		sc.buildNestedSchema(fieldValue.Elem(), structType)
+	}
+	ftype := fieldValue.Type()
+	if isList(ftype) {
+		listSchema := map[string]interface{}{
+			"type":  "array",
+			"items": sc.Build(fieldValue.Type(), structType),
+		}
+		return listSchema
+	} else if fieldValue.Kind() == reflect.Struct {
+		return sc.Build(fieldValue.Interface(), structType)
+	}
+	// Otherwise, return an empty schema
+	return map[string]interface{}{}
 }
 
-func buildFieldFromSchema(field reflect.StructField) map[string]interface{} {
+func (sc *Schema) getFieldName(field reflect.StructField) string {
+	if len(field.Tag.Get("json")) > 0 {
+		return field.Tag.Get("json")
+	}
+	return field.Name
+}
+
+func (sc *Schema) checkRequired(field reflect.StructField, required []string) []string {
+	if binding := field.Tag.Get("binding"); len(binding) > 0 && binding == "required" {
+		required = append(required, sc.getFieldName(field))
+	}
+	return required
+}
+
+func (sc *Schema) buildSchemaForString(field reflect.StructField) map[string]interface{} {
+	schema := map[string]interface{}{
+		"type": "string",
+	}
+	if enums := field.Tag.Get("enums"); len(enums) > 0 {
+		enumValues := strings.Split(strings.TrimSpace(enums), ",")
+		schema["enum"] = enumValues
+	}
+	return schema
+}
+
+func (sc *Schema) buildSchemaForInteger() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "integer",
+	}
+}
+
+func (sc *Schema) buildSchemaForNumber() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "number",
+	}
+}
+
+func (sc *Schema) buildSchemaForStruct(structValue interface{}, structType string) map[string]interface{} {
+	// Handle nested structs
+	return sc.Build(structValue, structType)
+}
+
+func (sc *Schema) getStructTypeFromList(listType reflect.Type) reflect.Type {
+
+	if listType.Kind() == reflect.Slice || listType.Kind() == reflect.Array {
+		// Get the element type of the slice/array
+		elementType := listType.Elem()
+		// If the element type is a struct, return it
+		if elementType.Kind() == reflect.Struct {
+			return elementType
+		}
+	}
+	return nil
+}
+
+//	func (sc *Schema) buildSchemaForArray(fieldType reflect.Type) map[string]interface{} {
+//		return map[string]interface{}{
+//			"type":  "array",
+//			"items": sc.buildFieldFromSchema(reflect.New(fieldType).Elem().Interface()),
+//		}
+//	}
+func (sc *Schema) buildFieldFromSchema(field reflect.StructField, inputType string) map[string]interface{} {
 	fieldType := field.Type
 	if fieldType.Kind() == reflect.Ptr {
 		fieldType = fieldType.Elem()
@@ -237,13 +384,15 @@ func buildFieldFromSchema(field reflect.StructField) map[string]interface{} {
 		jsonType = "number"
 	case reflect.Struct:
 		// If the field is a struct, recursively build schema for it
-		return buildSchemaFromStruct(reflect.New(fieldType), "request")
+		return sc.Build(reflect.New(fieldType), inputType)
+	case reflect.Bool:
+		jsonType = "boolean"
 	case reflect.Slice, reflect.Array:
 		// Get the element type of the slice/array
 		elementType := fieldType.Elem()
 		// If the element type is a struct, return it
 		if elementType.Kind() == reflect.Struct {
-			return buildSchemaFromStruct(reflect.New(fieldType).Elem().Interface(), "request")
+			return sc.Build(reflect.New(fieldType).Elem().Interface(), inputType)
 		}
 
 	default:
@@ -261,6 +410,12 @@ func buildFieldFromSchema(field reflect.StructField) map[string]interface{} {
 	}
 
 	return schema
+}
+
+func (sc *Schema) buildSchemaForObject() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+	}
 }
 
 var swagTempl = `

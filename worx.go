@@ -13,17 +13,19 @@ import (
 )
 
 type Application struct {
-	name   string
-	path   string
-	router *gin.RouterGroup
-	engine *gin.Engine
+	name        string
+	path        string
+	router      *gin.RouterGroup
+	engine      *gin.Engine
+	version     string
+	description string
 }
 
 func NewRouter[In, Out any](app *Application, path string) *router.APIEndpoint[In, Out] {
 	return router.New[In, Out](path, app.router.Group(""))
 }
 
-func NewApplication(path, name string, middlewares ...gin.HandlerFunc) *Application {
+func NewApplication(path, name, version, description string, middlewares ...gin.HandlerFunc) *Application {
 	r := Engine()
 
 	config := cors.DefaultConfig()
@@ -40,10 +42,12 @@ func NewApplication(path, name string, middlewares ...gin.HandlerFunc) *Applicat
 	noRoute(r)
 	g := r.Group(path)
 	return &Application{
-		name:   name,
-		path:   path,
-		router: g,
-		engine: r,
+		name:        name,
+		path:        path,
+		router:      g,
+		engine:      r,
+		version:     version,
+		description: description,
 	}
 }
 
@@ -51,11 +55,12 @@ type _ any
 
 func (a *Application) Run(address string) error {
 
-	// Generate Swagger JSON
-	swaggerJSON := buildSwaggerJSON(a.name)
-	bJ, _ := json.Marshal(swaggerJSON)
+	s, err := New(a.name, a.version, a.description).SetEndpoints(router.Endpoints).Build()
+	if err != nil {
+		panic(err)
+	}
+	bJ, _ := json.Marshal(s)
 
-	// Serve Swagger UI
 	a.router.GET("/spec", RenderSwagg(string(bJ))) // Serve swagger ui
 
 	return a.engine.Run(address)

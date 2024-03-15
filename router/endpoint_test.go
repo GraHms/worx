@@ -43,7 +43,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{"foo":"bar","baz":123}`)))
@@ -269,7 +269,7 @@ func TestShouldTryCreateWithWrongJsonFormat(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -312,7 +312,7 @@ func TestShouldTryCreateWithEmptyFIeld(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -354,7 +354,7 @@ func TestShouldTryCreateWithExtraField(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -402,7 +402,7 @@ func TestShouldTryCreateWithRequestProcessorError(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -444,7 +444,7 @@ func TestCreateWithInvalidBody(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{"fo}`)))
@@ -485,7 +485,7 @@ func TestCreateWithEmptyBody(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{}`)))
@@ -525,7 +525,7 @@ func TestCreateWithWrongContentType(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{"foo":"bar","baz":123}`)))
