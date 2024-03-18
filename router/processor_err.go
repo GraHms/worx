@@ -2,7 +2,7 @@ package router
 
 import "errors"
 
-type ProcessorError struct {
+type Err struct {
 	StatusCode int
 	ErrCode    string
 	ErrReason  string
@@ -10,7 +10,7 @@ type ProcessorError struct {
 	err        error
 }
 
-func (e *ProcessorError) Error() string {
+func (e *Err) Error() string {
 	e.err = errors.New(e.Message)
 	return e.err.Error()
 }

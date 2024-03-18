@@ -2,7 +2,7 @@ package router
 
 type fieldType map[string]interface{}
 
-func fieldSelector(fields []string, data fieldType) (fieldType, *ProcessorError) {
+func fieldSelector(fields []string, data fieldType) (fieldType, *Err) {
 	if len(fields) == 0 {
 		return data, nil
 	}
@@ -13,7 +13,7 @@ func fieldSelector(fields []string, data fieldType) (fieldType, *ProcessorError)
 			result[field] = value
 			continue
 		}
-		perr := ProcessorError{
+		perr := Err{
 			ErrCode:    "INVALID_FIELD_ERROR",
 			ErrReason:  "The field <" + field + "> does not exist",
 			Message:    "Invalid field <" + field + ">",

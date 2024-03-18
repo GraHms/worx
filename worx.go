@@ -1,26 +1,31 @@
 package worx
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/grahms/worx/router"
+	"html/template"
+	"net/http"
 	"time"
 )
 
 type Application struct {
-	name   string
-	path   string
-	router *gin.RouterGroup
-	engine *gin.Engine
+	name        string
+	path        string
+	router      *gin.RouterGroup
+	engine      *gin.Engine
+	version     string
+	description string
 }
 
 func NewRouter[In, Out any](app *Application, path string) *router.APIEndpoint[In, Out] {
 	return router.New[In, Out](path, app.router.Group(""))
 }
 
-func NewApplication(path, name string, middlewares ...gin.HandlerFunc) *Application {
+func NewApplication(path, name, version, description string, middlewares ...gin.HandlerFunc) *Application {
 	r := Engine()
 
 	config := cors.DefaultConfig()
@@ -37,16 +42,27 @@ func NewApplication(path, name string, middlewares ...gin.HandlerFunc) *Applicat
 	noRoute(r)
 	g := r.Group(path)
 	return &Application{
-		name:   name,
-		path:   path,
-		router: g,
-		engine: r,
+		name:        name,
+		path:        path,
+		router:      g,
+		engine:      r,
+		version:     version,
+		description: description,
 	}
 }
 
 type _ any
 
 func (a *Application) Run(address string) error {
+
+	s, err := New(a.name, a.version, a.description).SetEndpoints(router.Endpoints).Build()
+	if err != nil {
+		panic(err)
+	}
+	bJ, _ := json.Marshal(s)
+
+	a.router.GET("/spec", RenderSwagg(string(bJ))) // Serve swagger ui
+
 	return a.engine.Run(address)
 }
 func noRoute(r *gin.Engine) {
@@ -160,4 +176,27 @@ var defaultLogFormatter = func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("[WORX] Error formatting log as JSON: %v\n", err)
 	}
 	return string(logJSON) + "\n"
+}
+
+func RenderSwagg(spec string) func(c *gin.Context) {
+	return func(c *gin.Context) {
+
+		tmplData := struct {
+			SwaggerJSON string
+		}{
+			SwaggerJSON: spec,
+		}
+
+		t := template.Must(template.New("swagger").Parse(swagTempl))
+
+		var buf bytes.Buffer
+		if err := t.Execute(&buf, tmplData); err != nil {
+			c.String(http.StatusInternalServerError, "Failed to render Swagger UI")
+			return
+		}
+
+		c.Header("Content-Type", "text/html")
+		c.String(http.StatusOK, buf.String())
+	}
+
 }

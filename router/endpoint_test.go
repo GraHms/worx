@@ -34,7 +34,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Req) {
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Req) {
 		foo := "bar"
 		return nil, &Req{
 			Foo: &foo,
@@ -43,7 +43,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{"foo":"bar","baz":123}`)))
@@ -86,7 +86,7 @@ func TestShouldUpdate(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(id string, req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(id string, req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -138,7 +138,7 @@ func TestShouldUpdateWithWrongContentType(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(id string, req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(id string, req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -180,7 +180,7 @@ func TestShouldUpdateWithWrongJson(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(id string, req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(id string, req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -221,8 +221,8 @@ func TestShouldNotUpdateWithProccesorErr(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(id string, req Req, _ *RequestParams) (*ProcessorError, *Resp) {
-		return &ProcessorError{
+	requestProcessor := func(id string, req Req, _ *RequestParams) (*Err, *Resp) {
+		return &Err{
 			StatusCode: 500,
 		}, nil
 	}
@@ -261,7 +261,7 @@ func TestShouldTryCreateWithWrongJsonFormat(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -269,7 +269,7 @@ func TestShouldTryCreateWithWrongJsonFormat(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -304,7 +304,7 @@ func TestShouldTryCreateWithEmptyFIeld(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -312,7 +312,7 @@ func TestShouldTryCreateWithEmptyFIeld(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -346,7 +346,7 @@ func TestShouldTryCreateWithExtraField(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -354,7 +354,7 @@ func TestShouldTryCreateWithExtraField(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -388,8 +388,8 @@ func TestShouldTryCreateWithRequestProcessorError(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Resp) {
-		perr := &ProcessorError{
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Resp) {
+		perr := &Err{
 			err:        errors.New("i'm an error"),
 			StatusCode: 500,
 			ErrCode:    "ERR_CODE",
@@ -402,7 +402,7 @@ func TestShouldTryCreateWithRequestProcessorError(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo",
@@ -436,7 +436,7 @@ func TestCreateWithInvalidBody(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -444,7 +444,7 @@ func TestCreateWithInvalidBody(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{"fo}`)))
@@ -477,7 +477,7 @@ func TestCreateWithEmptyBody(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -485,7 +485,7 @@ func TestCreateWithEmptyBody(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{}`)))
@@ -517,7 +517,7 @@ func TestCreateWithWrongContentType(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(req Req, _ *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(req Req, _ *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -525,7 +525,7 @@ func TestCreateWithWrongContentType(t *testing.T) {
 	}
 
 	// Register the request processor function with the APIEndpoint instance
-	e.HandleCreate("", requestProcessor)
+	e.HandleCreate("", EndpointConfigs{}, requestProcessor)
 
 	// HandleCreate a mock HTTP POST request
 	req, err := http.NewRequest(http.MethodPost, "/foo", bytes.NewBuffer([]byte(`{"foo":"bar","baz":123}`)))
@@ -556,7 +556,7 @@ func TestRead(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(values *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(values *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -607,7 +607,7 @@ func TestReadWithoutFields(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(values *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(values *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
@@ -657,8 +657,8 @@ func TestReadWithoutProcessorError(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(values *RequestParams) (*ProcessorError, *Resp) {
-		return &ProcessorError{
+	requestProcessor := func(values *RequestParams) (*Err, *Resp) {
+		return &Err{
 			StatusCode: 500,
 			ErrCode:    "someErrCode",
 			ErrReason:  "NoReason",
@@ -706,7 +706,7 @@ func TestReadWithInvalidFIelds(t *testing.T) {
 	}
 
 	// Define a request processor function that returns a response body and a nil error
-	requestProcessor := func(values *RequestParams) (*ProcessorError, *Resp) {
+	requestProcessor := func(values *RequestParams) (*Err, *Resp) {
 		return nil, &Resp{
 			Foo: "bar",
 			Baz: 123,
