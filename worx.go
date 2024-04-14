@@ -22,6 +22,7 @@ type Application struct {
 }
 
 func NewRouter[In, Out any](app *Application, path string) *router.APIEndpoint[In, Out] {
+
 	return router.New[In, Out](path, app.router.Group(""))
 }
 
@@ -41,7 +42,7 @@ func NewApplication(path, name, version, description string, middlewares ...gin.
 	noMethod(r)
 	noRoute(r)
 	g := r.Group(path)
-	return &Application{
+	app := &Application{
 		name:        name,
 		path:        path,
 		router:      g,
@@ -49,21 +50,34 @@ func NewApplication(path, name, version, description string, middlewares ...gin.
 		version:     version,
 		description: description,
 	}
+	return app
 }
 
 type _ any
 
 func (a *Application) Run(address string) error {
+	a.renderDocs()
+	return a.engine.Run(address)
+}
 
-	s, err := New(a.name, a.version, a.description).SetEndpoints(router.Endpoints).Build()
+func (a *Application) renderDocs() {
+	s, err := router.NewOpenAPI(a.name, a.version, a.description).SetEndpoints(router.Endpoints).Build()
 	if err != nil {
 		panic(err)
 	}
 	bJ, _ := json.Marshal(s)
 
-	a.router.GET("/spec", RenderSwagg(string(bJ))) // Serve swagger ui
+	a.engine.GET("/spec", RenderSwagg(string(bJ))) // Serve swagger ui
+	a.engine.GET("/openapi.json", func(c *gin.Context) {
 
-	return a.engine.Run(address)
+		c.Header("Content-Type", "application/json")
+		c.String(200, string(bJ))
+	})
+	a.engine.GET("", func(c *gin.Context) {
+
+		c.Data(200, "text/html; charset=utf-8", []byte(redocHTML))
+	})
+
 }
 func noRoute(r *gin.Engine) {
 	r.NoRoute(func(c *gin.Context) {
@@ -200,3 +214,54 @@ func RenderSwagg(spec string) func(c *gin.Context) {
 	}
 
 }
+
+const swagTempl = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Swagger UI</title>
+  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.44.0/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.44.0/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = function() {
+      const spec = JSON.parse('{{.SwaggerJSON}}');
+      const ui = SwaggerUIBundle({
+        spec: spec,
+        dom_id: '#swagger-ui',
+      })
+    }
+  </script>
+</body>
+</html>
+`
+const redocHTML = `
+   <!DOCTYPE html>
+<html>
+  <head>
+    <title>Redoc</title>
+    <!-- needed for adaptive design -->
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+
+    <!--
+    Redoc doesn't change outer page styles
+    -->
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <redoc spec-url='/openapi.json'></redoc>
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"> </script>
+  </body>
+</html>
+
+    `

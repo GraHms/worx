@@ -56,11 +56,8 @@ func (o *OpenAPI) Build() (Map, error) {
 func (o *OpenAPI) buildPathItem(endpoint *router.Endpoint) Map {
 	pathItem := make(Map)
 	path := endpoint.Path
-	// Find all dynamic segments in the path and replace them with {param}/
 	re := regexp.MustCompile(`/:(\w+)(/|$)`)
 	path = re.ReplaceAllString(path, "/{$1}/")
-
-	// Build path parameters for each dynamic segment
 	re = regexp.MustCompile(`{(\w+)}/`)
 	matches := re.FindAllStringSubmatch(path, -1)
 	for _, match := range matches {
@@ -68,7 +65,6 @@ func (o *OpenAPI) buildPathItem(endpoint *router.Endpoint) Map {
 		if pathItem["parameters"] == nil {
 			pathItem["parameters"] = []Map{}
 		}
-		// Add path parameter to the path parameters map
 		pathItemParams := make(Map)
 		pathItemParams["name"] = paramName
 		pathItemParams["in"] = "path"
@@ -194,12 +190,10 @@ func (sc *Schema) buildSchemaFromStructByType(structType reflect.Type, schemaTyp
 		properties := make(map[string]interface{})
 		required := make([]string, 0)
 
-		// Iterate over the fields of the struct
 		for i := 0; i < structType.NumField(); i++ {
 			field := structType.Field(i)
 			fieldName := field.Name
 
-			// Check if the field is required based on struct tags
 			if jsonTag := field.Tag.Get("json"); jsonTag != "" {
 				fieldName = jsonTag
 			}
@@ -207,14 +201,10 @@ func (sc *Schema) buildSchemaFromStructByType(structType reflect.Type, schemaTyp
 				required = append(required, fieldName)
 			}
 
-			// Determine the schema for the field
 			fieldSchema := sc.buildFieldFromSchema(field, schemaType)
-
-			// Add the field schema to the properties map
 			properties[fieldName] = fieldSchema
 		}
 
-		// Add properties and required fields to the schema
 		schema["properties"] = properties
 		if len(required) > 0 {
 			schema["required"] = required
@@ -225,7 +215,6 @@ func (sc *Schema) buildSchemaFromStructByType(structType reflect.Type, schemaTyp
 		schema["items"] = sc.buildSchemaFromStructByType(structType, "object")
 
 	default:
-		// Unsupported schema type
 		fmt.Println("Unsupported schema type:", schemaType)
 	}
 
@@ -280,7 +269,6 @@ func (sc *Schema) Build(input interface{}, structType string) map[string]interfa
 
 	schema["properties"] = properties
 
-	// Add required fields to the schema if any
 	if len(required) > 0 {
 		schema["required"] = required
 	}
@@ -302,7 +290,7 @@ func (sc *Schema) buildNestedSchema(fieldValue reflect.Value, structType string)
 	} else if fieldValue.Kind() == reflect.Struct {
 		return sc.Build(fieldValue.Interface(), structType)
 	}
-	// Otherwise, return an empty schema
+
 	return map[string]interface{}{}
 }
 
@@ -351,9 +339,9 @@ func (sc *Schema) buildSchemaForStruct(structValue interface{}, structType strin
 func (sc *Schema) getStructTypeFromList(listType reflect.Type) reflect.Type {
 
 	if listType.Kind() == reflect.Slice || listType.Kind() == reflect.Array {
-		// Get the element type of the slice/array
+
 		elementType := listType.Elem()
-		// If the element type is a struct, return it
+
 		if elementType.Kind() == reflect.Struct {
 			return elementType
 		}
@@ -383,14 +371,11 @@ func (sc *Schema) buildFieldFromSchema(field reflect.StructField, inputType stri
 	case reflect.Float32, reflect.Float64:
 		jsonType = "number"
 	case reflect.Struct:
-		// If the field is a struct, recursively build schema for it
 		return sc.Build(reflect.New(fieldType), inputType)
 	case reflect.Bool:
 		jsonType = "boolean"
 	case reflect.Slice, reflect.Array:
-		// Get the element type of the slice/array
 		elementType := fieldType.Elem()
-		// If the element type is a struct, return it
 		if elementType.Kind() == reflect.Struct {
 			return sc.Build(reflect.New(fieldType).Elem().Interface(), inputType)
 		}
@@ -403,7 +388,6 @@ func (sc *Schema) buildFieldFromSchema(field reflect.StructField, inputType stri
 		"type": jsonType,
 	}
 
-	// Check if the field has enums
 	if enums := field.Tag.Get("enums"); len(enums) > 0 {
 		enumValues := strings.Split(strings.TrimSpace(enums), ",")
 		schema["enum"] = enumValues
@@ -417,27 +401,3 @@ func (sc *Schema) buildSchemaForObject() map[string]interface{} {
 		"type": "object",
 	}
 }
-
-var swagTempl = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Swagger UI</title>
-  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.44.0/swagger-ui.css" />
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/3.44.0/swagger-ui-bundle.js"></script>
-  <script>
-    window.onload = function() {
-      const spec = JSON.parse('{{.SwaggerJSON}}');
-      const ui = SwaggerUIBundle({
-        spec: spec,
-        dom_id: '#swagger-ui',
-      })
-    }
-  </script>
-</body>
-</html>
-`
