@@ -1,48 +1,23 @@
 package router
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/grahms/godantic"
 	"io"
+
 	"net/http"
 	"strconv"
 	"strings"
 )
 
-// Endpoint represents information about an API endpoint
-type Endpoint struct {
-	Path    string
-	Methods []Method
+type Handler interface {
+	Handler()
 }
 
-type Method struct {
-	HTTPMethod  string
-	Request     interface{}
-	Response    interface{}
-	Description string
-	Tags        []string
-	Summery     string
-	Configs     EndpointConfigs
-}
-
-var Endpoints map[string]*Endpoint
-
-// Initialize the Endpoints map
-func init() {
-	Endpoints = make(map[string]*Endpoint)
-}
-
-// we can have the global struct here
-type APIEndpointer[Req, Resp any] interface {
-	HandleCreate(uri string, processRequest func(Req, *RequestParams) (*Err, *Resp), opts ...HandleOption)
-	HandleRead(pathSuffix string, processRequest func(*RequestParams) (*Err, *Resp), opts ...HandleOption)
-	HandleUpdate(pathString string, requestProcessor func(id string, reqBody Req, params *RequestParams) (*Err, *Resp), opts ...HandleOption)
-	HandleList(pathString string, requestProcessor func(params *RequestParams, limit int, offset int) ([]*Resp, *Err, int, int), opts ...HandleOption)
-}
-
-func New[In, Out any](path string, group *gin.RouterGroup) *APIEndpoint[In, Out] {
-	return &APIEndpoint[In, Out]{
+func NewAPIEndpointGroup[Req any, Resp any](path string, group *gin.RouterGroup) *APIEndpoint[Req, Resp] {
+	return &APIEndpoint[Req, Resp]{
 		Path:   path,
 		Router: group,
 	}
@@ -59,67 +34,75 @@ type RequestParams struct {
 	Query      map[string]any
 	Headers    map[string]string
 	PathParams map[string]string
-}
-type EndpointConfigs struct {
-	Name           string
-	Uri            string
-	Tags           []string
-	Descriptions   string
-	AllowedHeaders []AllowedFields
-	AllowedParams  []AllowedFields
+	TraceID    string
 }
 
-type AllowedFields struct {
-	Name        string
-	Description string
-	Required    bool
-}
-
-func getConfigs(opts ...HandleOption) *EndpointConfigs {
-	config := &EndpointConfigs{}
-	for _, opt := range opts {
-		opt(config)
+func New[In, Out any](path string, group *gin.RouterGroup) *APIEndpoint[In, Out] {
+	return &APIEndpoint[In, Out]{
+		Path:   path,
+		Router: group,
 	}
-	return config
+}
+func setTags(path string, config *EndpointConfigs) {
+	tag := strings.TrimPrefix(path, "/")
+	tag = strings.ReplaceAll(path, "/", " ")
+	tag = strings.TrimPrefix(tag, " ")
+	config.GeneratedTags = []string{tag}
 }
 func (r *APIEndpoint[Req, Resp]) HandleCreate(uri string, processRequest func(Req, *RequestParams) (*Err, *Resp), opts ...HandleOption) {
 	config := getConfigs(opts...)
-	registerEndpoint(r.Router.BasePath()+r.Path+uri, "POST", new(Req), new(Resp), *config)
+	setTags(r.Path, config)
+	registerEndpoint(r.Router.BasePath()+r.Path+uri, "POST", new(Req), new(Resp), *config, opts...)
+	statusCode := http.StatusCreated
+	if config.StatusCode != nil {
+		statusCode = *config.StatusCode
+	}
 	r.Router.POST(r.Path+uri, func(c *gin.Context) {
 
+		params := r.extractRequestParams(c)
 		if statusCode, exception := r.validateJSONContentType(c); exception != nil {
+
 			c.JSON(statusCode, exception)
 			return
 		}
 
 		var requestBody Req
 		if err := r.bindJSON(c.Request.Body, &requestBody); err != nil {
-			c.JSON(r.validator.InputErr(err))
+			code, e := r.validator.InputErr(err)
+
+			c.JSON(code, e)
 			return
 		}
-
-		params := r.extractRequestParams(c)
 
 		perr, response := processRequest(requestBody, &params)
 		if perr != nil {
-			c.JSON(r.validator.ProcessorErr(perr))
+			code, e := r.validator.ProcessorErr(perr)
+
+			c.JSON(code, e)
 			return
 		}
 
-		c.JSON(http.StatusCreated, r.convertToMap(*response))
+		c.JSON(statusCode, r.convertToMap(*response))
 		return
 	})
 }
 
 func (r *APIEndpoint[Req, Resp]) HandleRead(pathSuffix string, processRequest func(*RequestParams) (*Err, *Resp), opts ...HandleOption) {
 	config := getConfigs(opts...)
-	registerEndpoint(r.Router.BasePath()+r.Path+pathSuffix, "GET", new(Req), new(Resp), *config)
+	setTags(r.Path, config)
+	registerEndpoint(r.Router.BasePath()+r.Path+pathSuffix, "GET", new(Req), new(Resp), *config, opts...)
+	statusCode := http.StatusOK
+	if config.StatusCode != nil {
+		statusCode = *config.StatusCode
+	}
 	r.Router.GET(r.Path+pathSuffix, func(c *gin.Context) {
 		reqValues := r.extractRequestParams(c)
 		perr, resp := processRequest(&reqValues)
 		// handle processor error
 		if perr != nil {
-			c.JSON(r.validator.ProcessorErr(perr))
+			code, e := r.validator.ProcessorErr(perr)
+
+			c.JSON(code, e)
 			return
 		}
 		fields := strings.Replace(c.Query("fields"), " ", "", -1)
@@ -130,21 +113,26 @@ func (r *APIEndpoint[Req, Resp]) HandleRead(pathSuffix string, processRequest fu
 		}
 		respWithFields, err := fieldSelector(fieldsList, r.convertToMap(*resp))
 		if err != nil {
-			c.JSON(r.validator.ProcessorErr(err))
+			code, e := r.validator.ProcessorErr(err)
+
+			c.JSON(code, e)
 			return
 		}
 
-		c.JSON(http.StatusOK, respWithFields)
+		c.JSON(statusCode, respWithFields)
 		return
 	})
 }
 
 func (r *APIEndpoint[Req, Resp]) HandleUpdate(pathString string, requestProcessor func(id string, reqBody Req, params *RequestParams) (*Err, *Resp), opts ...HandleOption) {
-	config := getConfigs(opts...)
-	registerEndpoint(r.Router.BasePath()+r.Path+pathString, "PATCH", new(Req), new(Resp), *config)
 	binder := godantic.Validate{}
 	binder.IgnoreRequired = true
 	binder.IgnoreMinLen = true
+
+	config := getConfigs(opts...)
+	setTags(r.Path, config)
+	registerEndpoint(r.Router.BasePath()+r.Path+pathString, "PATCH", new(Req), new(Resp), *config, opts...)
+	statusCode := http.StatusOK
 
 	r.Router.PATCH(r.Path+pathString, func(c *gin.Context) {
 		if statusCode, exception := r.validateJSONContentType(c); exception != nil {
@@ -153,20 +141,25 @@ func (r *APIEndpoint[Req, Resp]) HandleUpdate(pathString string, requestProcesso
 		}
 
 		var reqBody Req
+		reqValues := r.extractRequestParams(c)
 		requestDataBytes, err := io.ReadAll(c.Request.Body)
 		if err = binder.BindJSON(requestDataBytes, &reqBody); err != nil {
-			c.JSON(r.validator.InputErr(err))
+			code, e := r.validator.InputErr(err)
+
+			c.JSON(code, e)
 			return
 		}
 		id := c.Param("id")
-		reqValues := r.extractRequestParams(c)
+
 		perr, resp := requestProcessor(id, reqBody, &reqValues)
 		if perr != nil {
-			c.JSON(r.validator.ProcessorErr(perr))
+			code, e := r.validator.ProcessorErr(perr)
+
+			c.JSON(code, e)
 			return
 		}
 
-		c.JSON(http.StatusOK, r.convertToMap(*resp))
+		c.JSON(statusCode, r.convertToMap(*resp))
 		return
 	})
 }
@@ -180,8 +173,28 @@ func (r *APIEndpoint[Req, Resp]) convertToMap(obj interface{}) map[string]interf
 }
 
 func (r *APIEndpoint[Req, Resp]) HandleList(pathString string, requestProcessor func(params *RequestParams, limit int, offset int) ([]*Resp, *Err, int, int), opts ...HandleOption) {
+	opts = append(opts, WithAllowedParams([]AllowedFields{
+		{
+			Name:        "limit",
+			Description: "page limit",
+		},
+		{
+			Name:        "offset",
+			Description: "page number",
+		},
+		{
+			Name:        "fields",
+			Description: "fields to be selected ex: fields=id,name",
+		},
+	}))
 	config := getConfigs(opts...)
+	setTags(r.Path, config)
+
 	registerEndpoint(r.Router.BasePath()+r.Path+pathString, "GET", new(Req), new(Resp), *config)
+	statusCode := http.StatusOK
+	if config.StatusCode != nil {
+		statusCode = *config.StatusCode
+	}
 	r.Router.GET(r.Path+pathString, func(c *gin.Context) {
 		params := r.extractRequestParams(c)
 		limit, err := strconv.Atoi(c.DefaultQuery("limit", "30"))
@@ -208,7 +221,9 @@ func (r *APIEndpoint[Req, Resp]) HandleList(pathString string, requestProcessor 
 
 		resp, perr, amount, total := requestProcessor(&params, limit, offset)
 		if perr != nil {
-			c.JSON(r.validator.ProcessorErr(perr))
+			code, e := r.validator.ProcessorErr(perr)
+
+			c.JSON(code, e)
 			return
 		}
 
@@ -224,7 +239,8 @@ func (r *APIEndpoint[Req, Resp]) HandleList(pathString string, requestProcessor 
 			respMap := r.convertToMap(*resp)
 			respWithFields, err := fieldSelector(fieldsList, respMap)
 			if err != nil {
-				c.JSON(r.validator.ProcessorErr(err))
+				code, e := r.validator.ProcessorErr(err)
+				c.JSON(code, e)
 				return
 			}
 			responseMaps = append(responseMaps, respWithFields)
@@ -232,11 +248,12 @@ func (r *APIEndpoint[Req, Resp]) HandleList(pathString string, requestProcessor 
 
 		c.Header("X-Total-Count", strconv.Itoa(amount))
 		c.Header("X-Result-Count", strconv.Itoa(total))
+		c.Header("trace-id", params.TraceID)
 		if len(resp) == 0 {
 			c.JSON(http.StatusOK, resp)
 			return
 		}
-		c.JSON(http.StatusOK, responseMaps)
+		c.JSON(statusCode, responseMaps)
 		return
 	})
 }
@@ -278,98 +295,52 @@ func (r *APIEndpoint[Req, Resp]) extractRequestParams(c *gin.Context) RequestPar
 			params.Query[key] = c.Query(key)
 		}
 	}
+
 	return params
 }
 
-func GetAuthenticationHeader(req *RequestParams) (string, error) {
-	authentication, ok := req.Headers["Authorization"]
-	if !ok {
-		return "", ErrorBuilder("AUTHORIZATION_HEADER_NOT_FOUND", "Authentication Header Not Found", "Authentication Header Not Found", http.StatusBadRequest)
+func (r *APIEndpoint[Req, Resp]) HandleCreateWithoutBody(uri string, processRequest func(*RequestParams) (*Err, *Resp), opts ...HandleOption) {
+	config := getConfigs(opts...)
+	setTags(r.Path, config)
+	registerEndpoint(r.Router.BasePath()+r.Path+uri, "POST", new(Req), new(Resp), *config)
+	statusCode := http.StatusCreated
+	if config.StatusCode != nil {
+		statusCode = *config.StatusCode
 	}
-	return authentication, nil
-}
-func ErrorBuilder(errCode, errReason, message string, statusCode int) *Err {
-	return &Err{
-		ErrCode:    errCode,
-		ErrReason:  errReason,
-		StatusCode: statusCode,
-		Message:    message,
-	}
-}
-
-func registerEndpoint(path, method string, request, response interface{}, config EndpointConfigs) {
-	// Check if the endpoint already exists
-	if endpoint, ok := Endpoints[path]; ok {
-		// Check if the method already exists for this endpoint
-		for _, m := range endpoint.Methods {
-			if m.HTTPMethod == method {
-				// Method already exists, return or handle as appropriate
-				return
-			}
+	r.Router.POST(r.Path+uri, func(c *gin.Context) {
+		params := r.extractRequestParams(c)
+		perr, response := processRequest(&params)
+		if perr != nil {
+			c.JSON(r.validator.ProcessorErr(perr))
+			return
 		}
-		// Method does not exist, add it to the endpoint's methods
-		endpoint.Methods = append(endpoint.Methods, Method{
-			HTTPMethod:  method,
-			Request:     request,
-			Response:    response,
-			Description: config.Descriptions,
-			Tags:        config.Tags,
-			Summery:     config.Name,
-			Configs:     config,
-		})
-	} else {
-		// If the endpoint doesn't exist, create a new entry with the method
-		Endpoints[path] = &Endpoint{
-			Path: path,
-			Methods: []Method{
-				{
-					HTTPMethod:  method,
-					Request:     request,
-					Response:    response,
-					Description: config.Descriptions,
-					Tags:        config.Tags,
-					Summery:     config.Name,
-					Configs:     config,
-				},
-			},
+
+		c.JSON(statusCode, r.convertToMap(*response))
+		return
+	})
+}
+
+func (r *APIEndpoint[Req, Resp]) HandleDelete(pathString string, processRequest func(params *RequestParams) *Err, opts ...HandleOption) {
+	config := getConfigs(opts...)
+	setTags(r.Path, config)
+	registerEndpoint(r.Router.BasePath()+r.Path+pathString, "DELETE", nil, nil, *config, opts...)
+	statusCode := http.StatusNoContent
+	config.StatusCode = &statusCode
+	r.Router.DELETE(r.Path+pathString, func(c *gin.Context) {
+		params := r.extractRequestParams(c)
+		perr := processRequest(&params)
+		if perr != nil {
+			code, e := r.validator.ProcessorErr(perr)
+
+			c.JSON(code, e)
+			return
 		}
-	}
+
+		c.Status(statusCode)
+		return
+	})
 }
 
-type HandleOption func(*EndpointConfigs)
-
-func WithName(name string) HandleOption {
-	return func(c *EndpointConfigs) {
-		c.Name = name
-	}
-}
-
-func WithURI(uri string) HandleOption {
-	return func(c *EndpointConfigs) {
-		c.Uri = uri
-	}
-}
-
-func WithTags(tags []string) HandleOption {
-	return func(c *EndpointConfigs) {
-		c.Tags = tags
-	}
-}
-
-func WithDescriptions(descriptions string) HandleOption {
-	return func(c *EndpointConfigs) {
-		c.Descriptions = descriptions
-	}
-}
-
-func WithAllowedHeaders(headers []AllowedFields) HandleOption {
-	return func(c *EndpointConfigs) {
-		c.AllowedHeaders = headers
-	}
-}
-
-func WithAllowedParams(params []AllowedFields) HandleOption {
-	return func(c *EndpointConfigs) {
-		c.AllowedParams = params
-	}
+func WithContext(params *RequestParams) context.Context {
+	return context.WithValue(context.Background(), "traceID", params.TraceID)
 }

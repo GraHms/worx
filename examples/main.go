@@ -21,25 +21,18 @@ type Product struct {
 	BaseType      *string  `json:"@baseType"  binding:"ignore"`
 	Type          *string  `json:"type" enums:"physical,digital"`
 	Url           *string  `json:"@Url"  binding:"ignore"`
-	IsHumeid      *bool    `json:"isHumeid" binding:"required"`
 	Specification *[]Spec  `json:"specification"`
 	Id            *string  `json:"id" binding:"ignore"`
 }
 
 func main() {
-	app := worx.NewApplication("/api", "Product Catalog API", "1.0.0", "Product Catalogue API")
+	app := worx.NewApplication("/api", "Product API", "1.0.0", "Product API")
 	productTags := router.WithTags([]string{"Product", "something"})
 	product := worx.NewRouter[Product, Product](app, "/products")
 	product.HandleCreate("", createHandler, router.WithName("product name"), productTags)
 	product.HandleRead("", handler, productTags)
-	product.HandleRead("/:id/machava", handler, productTags, router.WithAllowedHeaders([]router.AllowedFields{
-		{
-			Name:        "x-tower",
-			Description: "",
-			Required:    false,
-		},
-	}))
-	err := app.Run(":8080")
+	product.HandleRead("/:id", handler, productTags)
+	err := app.Run(":8081")
 	if err != nil {
 		panic(err)
 	}
