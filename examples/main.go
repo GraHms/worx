@@ -32,10 +32,9 @@ func main() {
 	product.HandleCreate("", createHandler, router.WithName("product name"), productTags)
 	product.HandleRead("", handler, productTags)
 	product.HandleRead("/:id", handler, productTags)
-	err := app.Run(":8081")
-	if err != nil {
-		panic(err)
-	}
+
+	app.Run("8082")
+
 }
 
 func createHandler(product Product, params *router.RequestParams) (*router.Err, *Product) {
