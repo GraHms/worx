@@ -16,7 +16,7 @@ type Application struct {
 	name        string
 	path        string
 	router      *gin.RouterGroup
-	engine      *gin.Engine
+	Engine      *gin.Engine
 	version     string
 	description string
 }
@@ -46,7 +46,7 @@ func NewApplication(path, name, version, description string, middlewares ...gin.
 		name:        name,
 		path:        path,
 		router:      g,
-		engine:      r,
+		Engine:      r,
 		version:     version,
 		description: description,
 	}
@@ -57,7 +57,7 @@ type _ any
 
 func (a *Application) Run(address string) error {
 	a.renderDocs()
-	return a.engine.Run(address)
+	return a.Engine.Run(address)
 }
 
 func (a *Application) renderDocs() {
@@ -67,13 +67,13 @@ func (a *Application) renderDocs() {
 	}
 	bJ, _ := json.Marshal(s)
 
-	a.engine.GET("/spec", RenderSwagg(string(bJ))) // Serve swagger ui
-	a.engine.GET("/openapi.json", func(c *gin.Context) {
+	a.Engine.GET("/spec", RenderSwagg(string(bJ))) // Serve swagger ui
+	a.Engine.GET("/openapi.json", func(c *gin.Context) {
 
 		c.Header("Content-Type", "application/json")
 		c.String(200, string(bJ))
 	})
-	a.engine.GET("", func(c *gin.Context) {
+	a.Engine.GET("", func(c *gin.Context) {
 
 		c.Data(200, "text/html; charset=utf-8", []byte(redocHTML))
 	})
