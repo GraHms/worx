@@ -73,7 +73,7 @@ func (a *Application) renderDocs() {
 		c.Header("Content-Type", "application/json")
 		c.String(200, string(bJ))
 	})
-	a.Engine.GET("", func(c *gin.Context) {
+	a.Engine.GET("/redoc", func(c *gin.Context) {
 
 		c.Data(200, "text/html; charset=utf-8", []byte(redocHTML))
 	})
